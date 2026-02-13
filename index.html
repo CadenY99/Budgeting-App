@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Couples Budget</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #007AFF; /* iOS Blue */
+            --bg: #F2F2F7;
+            --card-bg: #FFFFFF;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            -webkit-tap-highlight-color: transparent;
+        }
+        h1, h2 { text-align: center; margin-bottom: 10px; }
+        
+        /* Card Styling */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        /* Inputs */
+        label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9em; }
+        input[type="number"], input[type="text"], select {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box; /* Fixes padding issues */
+            font-size: 16px; /* Prevents iOS zoom on focus */
+        }
+
+        /* Buttons */
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        button.secondary {
+            background-color: #e5e5ea;
+            color: #333;
+            margin-top: 10px;
+        }
+
+        /* Category List */
+        .category-item {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .remove-btn {
+            background: #FF3B30;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Results */
+        .result-box {
+            text-align: center;
+        }
+        .balance-positive { color: #34C759; }
+        .balance-negative { color: #FF3B30; }
+        
+        /* Chart Container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>💰 Our Budget</h1>
+
+    <div class="card">
+        <h2>Income</h2>
+        <label>Paycheck 1 (You)</label>
+        <input type="number" id="income1" placeholder="0.00" oninput="calculateBudget()">
+        
+        <label>Paycheck 2 (Spouse)</label>
+        <input type="number" id="income2" placeholder="0.00" oninput="calculateBudget()">
+        
+        <div style="text-align: right; font-weight: bold; margin-top: 10px;">
+            Total Income: $<span id="totalIncome">0.00</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Allocations</h2>
+        <div id="categoryList">
+            </div>
+        <button class="secondary" onclick="addCategory()">+ Add Category</button>
+    </div>
+
+    <div class="card result-box">
+        <h2>Remaining Balance</h2>
+        <h1 id="remainingBalance">$0.00</h1>
+    </div>
+
+    <div class="card">
+        <h2>Visual Breakdown</h2>
+        <div class="chart-container">
+            <canvas id="budgetChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Initial Data State
+        let categories = [
+            { name: "Rent/Mortgage", type: "fixed", value: 0 },
+            { name: "Savings", type: "percent", value: 10 }
+        ];
+
+        // Chart Instance
+        let myChart = null;
+
+        // Initialize
+        function init() {
+            renderCategories();
+            calculateBudget();
+        }
+
+        // Render the list of inputs for categories
+        function renderCategories() {
+            const container = document.getElementById('categoryList');
+            container.innerHTML = '';
+
+            categories.forEach((cat, index) => {
+                const div = document.createElement('div');
+                div.className = 'category-item';
+                div.innerHTML = `
+                    <div style="flex: 2;">
+                        <input type="text" value="${cat.name}" placeholder="Name" onchange="updateCategory(${index}, 'name', this.value)">
+                    </div>
+                    <div style="flex: 1;">
+                        <select onchange="updateCategory(${index}, 'type', this.value)">
+                            <option value="fixed" ${cat.type === 'fixed' ? 'selected' : ''}>$</option>
+                            <option value="percent" ${cat.type === 'percent' ? 'selected' : ''}>%</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1;">
+                        <input type="number" value="${cat.value}" placeholder="Amt" oninput="updateCategory(${index}, 'value', this.value)">
+                    </div>
+                    <button class="remove-btn" onclick="removeCategory(${index})">×</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function addCategory() {
+            categories.push({ name: "", type: "fixed", value: 0 });
+            renderCategories();
+        }
+
+        function removeCategory(index) {
+            categories.splice(index, 1);
+            renderCategories();
+            calculateBudget();
+        }
+
+        function updateCategory(index, field, val) {
+            categories[index][field] = field === 'value' ? parseFloat(val) || 0 : val;
+            calculateBudget();
+        }
+
+        function calculateBudget() {
+            // Get Incomes
+            const inc1 = parseFloat(document.getElementById('income1').value) || 0;
+            const inc2 = parseFloat(document.getElementById('income2').value) || 0;
+            const totalIncome = inc1 + inc2;
+
+            document.getElementById('totalIncome').innerText = totalIncome.toFixed(2);
+
+            let totalExpenses = 0;
+            let chartLabels = [];
+            let chartData = [];
+
+            // Calculate Allocations
+            categories.forEach(cat => {
+                let amount = 0;
+                if (cat.type === 'fixed') {
+                    amount = cat.value;
+                } else {
+                    // Percentage of total income
+                    amount = totalIncome * (cat.value / 100);
+                }
+                
+                totalExpenses += amount;
+                
+                // Prepare Chart Data
+                if (cat.name && amount > 0) {
+                    chartLabels.push(cat.name);
+                    chartData.push(amount);
+                }
+            });
+
+            // Update Remaining Balance
+            const remaining = totalIncome - totalExpenses;
+            const balanceEl = document.getElementById('remainingBalance');
+            balanceEl.innerText = `$${remaining.toFixed(2)}`;
+            
+            if (remaining < 0) {
+                balanceEl.className = 'balance-negative';
+            } else {
+                balanceEl.className = 'balance-positive';
+            }
+
+            // If there is remaining money, show it on chart as "Unallocated"
+            if (remaining > 0) {
+                chartLabels.push("Remaining");
+                chartData.push(remaining);
+            }
+
+            updateChart(chartLabels, chartData);
+        }
+
+        function updateChart(labels, data) {
+            const ctx = document.getElementById('budgetChart').getContext('2d');
+            
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#E7E9ED'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize on load
+        init();
+
+    </script>
+</body>
+</html>
