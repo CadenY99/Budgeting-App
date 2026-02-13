@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Couples Budget</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
         :root {
             --primary: #007AFF; 
-            --bg: #545454; /* Your requested soft grey */
+            --bg: #545454; 
             --card-bg: #ffffff;
             --text-main: #ffffff;
         }
@@ -16,81 +17,111 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg);
             margin: 0;
-            padding: 20px;
+            padding: 15px;
             color: var(--text-main);
             -webkit-tap-highlight-color: transparent;
         }
         h1, h2 { text-align: center; margin-bottom: 10px; color: var(--text-main); }
-        h2 { font-size: 1.2rem; color: #333; } /* Inside cards */
+        h2 { font-size: 1.1rem; color: #333; margin-top: 5px; }
         
         .card {
             background: var(--card-bg);
             border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
+            padding: 15px;
+            margin-bottom: 15px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            color: #333; /* Dark text for light cards */
+            color: #333;
         }
 
-        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.9em; color: #555; }
+        label { display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.8em; color: #666; }
         input[type="number"], input[type="text"], select {
             width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
+            padding: 10px;
+            margin-bottom: 10px;
             border: 1px solid #ddd;
-            border-radius: 10px;
+            border-radius: 8px;
             box-sizing: border-box;
             font-size: 16px;
-            background: #fdfdfd;
+        }
+
+        /* Fixed the dropdown size issue */
+        select {
+            font-size: 14px; 
+            padding: 10px 5px;
+            text-align: center;
         }
 
         button {
             background-color: var(--primary);
             color: white;
             border: none;
-            padding: 14px;
+            padding: 12px;
             border-radius: 10px;
             font-size: 16px;
             font-weight: 600;
-            cursor: pointer;
             width: 100%;
-            transition: opacity 0.2s;
         }
-        button:active { opacity: 0.7; }
-        
         button.secondary {
             background-color: #f0f0f5;
             color: var(--primary);
             margin-top: 5px;
         }
 
+        /* Drag & Drop Styling */
         .category-item {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #eee;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            border: 1px solid #eee;
         }
+        .handle {
+            cursor: grab;
+            color: #ccc;
+            padding-right: 5px;
+            font-size: 20px;
+            user-select: none;
+        }
+        .is-paid {
+            opacity: 0.4;
+            filter: grayscale(1);
+        }
+
+        /* Checkbox styling */
+        .cb-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+        }
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+        }
+
         .remove-btn {
             background: #FF3B30;
-            width: 35px;
-            height: 35px;
-            min-width: 35px;
+            width: 30px;
+            height: 30px;
+            min-width: 30px;
             border-radius: 50%;
+            color: white;
+            border: none;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        .result-box h1 { margin: 10px 0; color: #333; font-size: 2.5rem; }
+        .result-box h1 { margin: 5px 0; color: #333; font-size: 2.2rem; }
         .balance-positive { color: #28a745 !important; }
         .balance-negative { color: #dc3545 !important; }
         
         .chart-container {
             position: relative;
-            height: 280px;
-            width: 100%;
+            height: 250px;
         }
     </style>
 </head>
@@ -100,13 +131,17 @@
 
     <div class="card">
         <h2>Monthly Income</h2>
-        <label>Paycheck 1</label>
-        <input type="number" id="income1" placeholder="0.00" oninput="saveAndCalc()">
-        
-        <label>Paycheck 2</label>
-        <input type="number" id="income2" placeholder="0.00" oninput="saveAndCalc()">
-        
-        <div style="text-align: right; font-weight: bold; color: #777;">
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+                <label>Paycheck 1</label>
+                <input type="number" id="income1" placeholder="0.00" oninput="saveAndCalc()">
+            </div>
+            <div style="flex: 1;">
+                <label>Paycheck 2</label>
+                <input type="number" id="income2" placeholder="0.00" oninput="saveAndCalc()">
+            </div>
+        </div>
+        <div style="text-align: right; font-weight: bold; color: #888; font-size: 0.9em;">
             Total: $<span id="totalIncome">0.00</span>
         </div>
     </div>
@@ -118,7 +153,7 @@
     </div>
 
     <div class="card result-box">
-        <h2>Leftover to Spend</h2>
+        <h2>Leftover Balance</h2>
         <h1 id="remainingBalance">$0.00</h1>
     </div>
 
@@ -132,7 +167,6 @@
         let categories = [];
         let myChart = null;
 
-        // LOAD DATA ON START
         function init() {
             const savedIncome1 = localStorage.getItem('income1');
             const savedIncome2 = localStorage.getItem('income2');
@@ -141,18 +175,32 @@
             if(savedIncome1) document.getElementById('income1').value = savedIncome1;
             if(savedIncome2) document.getElementById('income2').value = savedIncome2;
             
-            if(savedCats) {
-                categories = JSON.parse(savedCats);
-            } else {
-                // Default starting categories
-                categories = [
-                    { name: "Rent/Mortgage", type: "fixed", value: 1200 },
-                    { name: "Savings", type: "percent", value: 10 }
-                ];
-            }
+            categories = savedCats ? JSON.parse(savedCats) : [
+                { name: "Rent", type: "fixed", value: 1200, paid: false },
+                { name: "Savings", type: "percent", value: 10, paid: false }
+            ];
 
             renderCategories();
+            initSortable();
             calculateBudget();
+        }
+
+        function initSortable() {
+            const el = document.getElementById('categoryList');
+            Sortable.create(el, {
+                handle: '.handle',
+                animation: 150,
+                onEnd: function() {
+                    // Update our categories array based on the new DOM order
+                    const newOrder = [];
+                    document.querySelectorAll('.category-item').forEach(row => {
+                        newOrder.push(categories[row.dataset.index]);
+                    });
+                    categories = newOrder;
+                    renderCategories(); // Re-render to update data-indices
+                    saveAndCalc();
+                }
+            });
         }
 
         function renderCategories() {
@@ -160,24 +208,39 @@
             container.innerHTML = '';
             categories.forEach((cat, index) => {
                 const div = document.createElement('div');
-                div.className = 'category-item';
+                div.className = `category-item ${cat.paid ? 'is-paid' : ''}`;
+                div.dataset.index = index;
                 div.innerHTML = `
-                    <div style="flex: 2;"><input type="text" value="${cat.name}" placeholder="Label" oninput="updateCat(${index}, 'name', this.value)"></div>
-                    <div style="flex: 0.8;">
+                    <div class="handle">☰</div>
+                    <div class="cb-container">
+                        <input type="checkbox" ${cat.paid ? 'checked' : ''} onchange="togglePaid(${index})">
+                    </div>
+                    <div style="flex: 2;">
+                        <input type="text" value="${cat.name}" placeholder="Item" oninput="updateCat(${index}, 'name', this.value)">
+                    </div>
+                    <div style="flex: 0.7;">
                         <select onchange="updateCat(${index}, 'type', this.value)">
                             <option value="fixed" ${cat.type === 'fixed' ? 'selected' : ''}>$</option>
                             <option value="percent" ${cat.type === 'percent' ? 'selected' : ''}>%</option>
                         </select>
                     </div>
-                    <div style="flex: 1;"><input type="number" value="${cat.value}" oninput="updateCat(${index}, 'value', this.value)"></div>
+                    <div style="flex: 1.2;">
+                        <input type="number" value="${cat.value}" oninput="updateCat(${index}, 'value', this.value)">
+                    </div>
                     <button class="remove-btn" onclick="removeCategory(${index})">✕</button>
                 `;
                 container.appendChild(div);
             });
         }
 
+        function togglePaid(index) {
+            categories[index].paid = !categories[index].paid;
+            renderCategories();
+            saveAndCalc();
+        }
+
         function addCategory() {
-            categories.push({ name: "", type: "fixed", value: 0 });
+            categories.push({ name: "", type: "fixed", value: 0, paid: false });
             renderCategories();
             saveData();
         }
@@ -229,7 +292,7 @@
             balanceEl.className = remaining < 0 ? 'balance-negative' : 'balance-positive';
 
             if (remaining > 0) {
-                chartLabels.push("Unallocated");
+                chartLabels.push("Remaining");
                 chartData.push(remaining);
             }
             updateChart(chartLabels, chartData);
@@ -245,13 +308,14 @@
                     datasets: [{
                         data: data,
                         backgroundColor: ['#4facfe', '#00f2fe', '#f093fb', '#f5576c', '#43e97b', '#fa709a', '#667eea'],
-                        borderWidth: 0
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
                 }
             });
         }
