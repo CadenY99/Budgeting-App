@@ -20,6 +20,7 @@
             padding: 15px;
             color: var(--text-main);
             -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
         }
         h1, h2 { text-align: center; margin-bottom: 10px; color: var(--text-main); }
         h2 { font-size: 1.1rem; color: #333; margin-top: 5px; }
@@ -37,14 +38,13 @@
         input[type="number"], input[type="text"] {
             width: 100%;
             padding: 10px;
-            margin-bottom: 5px;
             border: 1px solid #ddd;
             border-radius: 8px;
             box-sizing: border-box;
             font-size: 16px;
+            background: #fff;
         }
 
-        /* Flywheel / Toggle Button Styling */
         .flywheel-btn {
             background-color: #f0f0f5;
             border: 1px solid #ddd;
@@ -57,68 +57,81 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            user-select: none;
+            flex-shrink: 0;
         }
 
-        button.main-btn {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            width: 100%;
-        }
         button.secondary {
             background-color: #f0f0f5;
             color: var(--primary);
-            margin-top: 5px;
             border: none;
-            padding: 10px;
+            padding: 12px;
             border-radius: 10px;
             width: 100%;
             font-weight: 600;
+            font-size: 16px;
         }
 
+        /* Improved Dragging Styles */
+        #categoryList {
+            min-height: 50px;
+        }
         .category-item {
             display: flex;
             gap: 8px;
             align-items: center;
             margin-bottom: 10px;
-            padding: 10px;
+            padding: 12px 10px;
             background: #f9f9f9;
-            border-radius: 10px;
+            border-radius: 12px;
             border: 1px solid #eee;
-            transition: all 0.2s ease;
+            position: relative;
+            touch-action: none; /* Helps SortableJS on mobile */
         }
+        
+        /* This class is applied when an item is being dragged */
+        .sortable-ghost {
+            opacity: 0.3;
+            background: var(--primary) !important;
+        }
+
+        .calc-preview {
+            font-size: 10px;
+            color: #007AFF;
+            position: absolute;
+            bottom: 2px;
+            right: 48px;
+            font-weight: 700;
+        }
+
         .handle {
             cursor: grab;
-            color: #ccc;
-            font-size: 18px;
-            padding-right: 2px;
+            color: #bbb;
+            font-size: 20px;
+            padding: 0 5px;
+            display: flex;
+            align-items: center;
         }
+        
         .is-paid {
-            opacity: 0.4;
+            opacity: 0.4 !important;
             background: #e9e9e9;
         }
 
-        /* Fancy Checkbox */
         .paid-toggle {
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
-            border: 2px solid #ddd;
+            border: 2px solid #ccc;
             display: flex;
             align-items: center;
             justify-content: center;
             background: white;
+            flex-shrink: 0;
         }
         .paid-toggle.active {
             background: #34C759;
             border-color: #34C759;
             color: white;
-            font-size: 14px;
         }
 
         .remove-btn {
@@ -130,6 +143,7 @@
             color: white;
             border: none;
             font-size: 14px;
+            flex-shrink: 0;
         }
 
         .result-box h1 { margin: 5px 0; color: #333; font-size: 2.2rem; }
@@ -155,7 +169,7 @@
                 <input type="number" id="income2" placeholder="0.00" oninput="saveAndCalc()">
             </div>
         </div>
-        <div style="text-align: right; font-weight: bold; color: #888; font-size: 0.9em; margin-top: 5px;">
+        <div style="text-align: right; font-weight: bold; color: #888; font-size: 0.9em; margin-top: 8px;">
             Total: $<span id="totalIncome">0.00</span>
         </div>
     </div>
@@ -167,7 +181,7 @@
     </div>
 
     <div class="card result-box">
-        <h2>Leftover Balance</h2>
+        <h2 id="balanceLabel">Leftover Balance</h2>
         <h1 id="remainingBalance">$0.00</h1>
     </div>
 
@@ -180,6 +194,7 @@
     <script>
         let categories = [];
         let myChart = null;
+        let sortableInstance = null;
 
         function init() {
             const savedIncome1 = localStorage.getItem('income1');
@@ -201,16 +216,22 @@
 
         function initSortable() {
             const el = document.getElementById('categoryList');
-            Sortable.create(el, {
+            sortableInstance = Sortable.create(el, {
                 handle: '.handle',
-                animation: 150,
+                animation: 250, // Smoother slide animation
+                ghostClass: 'sortable-ghost',
+                delay: 100, // Short delay to prevent accidental drags while scrolling
+                delayOnTouchOnly: true,
+                forceFallback: true, // Better behavior on iOS
                 onEnd: function() {
+                    // Sync the array with the new DOM order
                     const newOrder = [];
                     document.querySelectorAll('.category-item').forEach(row => {
-                        newOrder.push(categories[row.dataset.index]);
+                        const index = parseInt(row.dataset.index);
+                        newOrder.push(categories[index]);
                     });
                     categories = newOrder;
-                    renderCategories();
+                    renderCategories(); // Re-index everything
                     saveAndCalc();
                 }
             });
@@ -218,8 +239,12 @@
 
         function renderCategories() {
             const container = document.getElementById('categoryList');
+            const totalIncome = (parseFloat(document.getElementById('income1').value) || 0) + 
+                                (parseFloat(document.getElementById('income2').value) || 0);
+
             container.innerHTML = '';
             categories.forEach((cat, index) => {
+                const calculatedValue = cat.type === 'percent' ? (totalIncome * (cat.value / 100)) : 0;
                 const div = document.createElement('div');
                 div.className = `category-item ${cat.paid ? 'is-paid' : ''}`;
                 div.dataset.index = index;
@@ -229,18 +254,34 @@
                         ${cat.paid ? '✓' : ''}
                     </div>
                     <div style="flex: 2;">
-                        <input type="text" value="${cat.name}" placeholder="Item" oninput="updateCat(${index}, 'name', this.value)">
+                        <input type="text" value="${cat.name}" placeholder="Item" oninput="updateCatName(${index}, this.value)">
                     </div>
                     <div class="flywheel-btn" onclick="toggleType(${index})">
                         ${cat.type === 'fixed' ? '$' : '%'}
                     </div>
                     <div style="flex: 1.2;">
-                        <input type="number" value="${cat.value}" oninput="updateCat(${index}, 'value', this.value)">
+                        <input type="number" value="${cat.value}" oninput="updateCatValue(${index}, this.value)">
                     </div>
+                    ${cat.type === 'percent' ? `<div class="calc-preview">=$${calculatedValue.toFixed(2)}</div>` : ''}
                     <button class="remove-btn" onclick="removeCategory(${index})">✕</button>
                 `;
                 container.appendChild(div);
             });
+        }
+
+        // Specific update functions to prevent full re-render while typing (helps smoothness)
+        function updateCatName(index, val) {
+            categories[index].name = val;
+            saveAndCalc();
+        }
+
+        function updateCatValue(index, val) {
+            categories[index].value = parseFloat(val) || 0;
+            // We only re-render if it's a percent to update the ghost text
+            if(categories[index].type === 'percent') {
+                renderCategories();
+            }
+            saveAndCalc();
         }
 
         function toggleType(index) {
@@ -264,11 +305,6 @@
         function removeCategory(index) {
             categories.splice(index, 1);
             renderCategories();
-            saveAndCalc();
-        }
-
-        function updateCat(index, field, val) {
-            categories[index][field] = field === 'value' ? parseFloat(val) || 0 : val;
             saveAndCalc();
         }
 
@@ -305,7 +341,14 @@
             const remaining = totalIncome - totalExpenses;
             const balanceEl = document.getElementById('remainingBalance');
             balanceEl.innerText = `$${remaining.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            balanceEl.className = remaining < 0 ? 'balance-negative' : 'balance-positive';
+            
+            if (remaining < 0) {
+                balanceEl.className = 'balance-negative';
+                document.getElementById('balanceLabel').innerText = "Over Budget By:";
+            } else {
+                balanceEl.className = 'balance-positive';
+                document.getElementById('balanceLabel').innerText = "Leftover Balance";
+            }
 
             if (remaining > 0) {
                 chartLabels.push("Remaining");
@@ -331,7 +374,10 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+                    animation: { duration: 500 },
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } 
+                    }
                 }
             });
         }
