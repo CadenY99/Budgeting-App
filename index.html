@@ -35,6 +35,8 @@
         }
 
         label { display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.8em; color: #666; }
+        
+        /* Clean Inputs */
         input[type="number"], input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -43,6 +45,7 @@
             box-sizing: border-box;
             font-size: 16px;
             background: #fff;
+            -webkit-appearance: none; /* Fixes iOS inner shadow */
         }
 
         .flywheel-btn {
@@ -71,10 +74,6 @@
             font-size: 16px;
         }
 
-        /* Improved Dragging Styles */
-        #categoryList {
-            min-height: 50px;
-        }
         .category-item {
             display: flex;
             gap: 8px;
@@ -85,14 +84,9 @@
             border-radius: 12px;
             border: 1px solid #eee;
             position: relative;
-            touch-action: none; /* Helps SortableJS on mobile */
         }
         
-        /* This class is applied when an item is being dragged */
-        .sortable-ghost {
-            opacity: 0.3;
-            background: var(--primary) !important;
-        }
+        .sortable-ghost { opacity: 0.3; background: var(--primary) !important; }
 
         .calc-preview {
             font-size: 10px;
@@ -103,19 +97,8 @@
             font-weight: 700;
         }
 
-        .handle {
-            cursor: grab;
-            color: #bbb;
-            font-size: 20px;
-            padding: 0 5px;
-            display: flex;
-            align-items: center;
-        }
-        
-        .is-paid {
-            opacity: 0.4 !important;
-            background: #e9e9e9;
-        }
+        .handle { cursor: grab; color: #bbb; font-size: 20px; padding: 0 5px; }
+        .is-paid { opacity: 0.4 !important; background: #e9e9e9; }
 
         .paid-toggle {
             width: 26px;
@@ -128,11 +111,7 @@
             background: white;
             flex-shrink: 0;
         }
-        .paid-toggle.active {
-            background: #34C759;
-            border-color: #34C759;
-            color: white;
-        }
+        .paid-toggle.active { background: #34C759; border-color: #34C759; color: white; }
 
         .remove-btn {
             background: #FF3B30;
@@ -162,11 +141,11 @@
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;">
                 <label>Paycheck 1</label>
-                <input type="number" id="income1" placeholder="0.00" oninput="saveAndCalc()">
+                <input type="number" id="income1" inputmode="decimal" placeholder="0.00" oninput="saveAndCalc(true)">
             </div>
             <div style="flex: 1;">
                 <label>Paycheck 2</label>
-                <input type="number" id="income2" placeholder="0.00" oninput="saveAndCalc()">
+                <input type="number" id="income2" inputmode="decimal" placeholder="0.00" oninput="saveAndCalc(true)">
             </div>
         </div>
         <div style="text-align: right; font-weight: bold; color: #888; font-size: 0.9em; margin-top: 8px;">
@@ -194,7 +173,6 @@
     <script>
         let categories = [];
         let myChart = null;
-        let sortableInstance = null;
 
         function init() {
             const savedIncome1 = localStorage.getItem('income1');
@@ -216,22 +194,20 @@
 
         function initSortable() {
             const el = document.getElementById('categoryList');
-            sortableInstance = Sortable.create(el, {
+            Sortable.create(el, {
                 handle: '.handle',
-                animation: 250, // Smoother slide animation
+                animation: 250,
                 ghostClass: 'sortable-ghost',
-                delay: 100, // Short delay to prevent accidental drags while scrolling
+                delay: 100,
                 delayOnTouchOnly: true,
-                forceFallback: true, // Better behavior on iOS
+                forceFallback: true,
                 onEnd: function() {
-                    // Sync the array with the new DOM order
                     const newOrder = [];
                     document.querySelectorAll('.category-item').forEach(row => {
-                        const index = parseInt(row.dataset.index);
-                        newOrder.push(categories[index]);
+                        newOrder.push(categories[parseInt(row.dataset.index)]);
                     });
                     categories = newOrder;
-                    renderCategories(); // Re-index everything
+                    renderCategories();
                     saveAndCalc();
                 }
             });
@@ -248,52 +224,55 @@
                 const div = document.createElement('div');
                 div.className = `category-item ${cat.paid ? 'is-paid' : ''}`;
                 div.dataset.index = index;
+                div.id = `cat-row-${index}`;
                 div.innerHTML = `
                     <div class="handle">☰</div>
                     <div class="paid-toggle ${cat.paid ? 'active' : ''}" onclick="togglePaid(${index})">
                         ${cat.paid ? '✓' : ''}
                     </div>
                     <div style="flex: 2;">
-                        <input type="text" value="${cat.name}" placeholder="Item" oninput="updateCatName(${index}, this.value)">
+                        <input type="text" value="${cat.name}" placeholder="Item" oninput="updateData(${index}, 'name', this.value)">
                     </div>
                     <div class="flywheel-btn" onclick="toggleType(${index})">
                         ${cat.type === 'fixed' ? '$' : '%'}
                     </div>
                     <div style="flex: 1.2;">
-                        <input type="number" value="${cat.value}" oninput="updateCatValue(${index}, this.value)">
+                        <input type="number" inputmode="decimal" value="${cat.value}" oninput="updateData(${index}, 'value', this.value)">
                     </div>
-                    ${cat.type === 'percent' ? `<div class="calc-preview">=$${calculatedValue.toFixed(2)}</div>` : ''}
+                    <div class="calc-preview" id="preview-${index}">${cat.type === 'percent' ? '=$' + calculatedValue.toFixed(2) : ''}</div>
                     <button class="remove-btn" onclick="removeCategory(${index})">✕</button>
                 `;
                 container.appendChild(div);
             });
         }
 
-        // Specific update functions to prevent full re-render while typing (helps smoothness)
-        function updateCatName(index, val) {
-            categories[index].name = val;
-            saveAndCalc();
-        }
-
-        function updateCatValue(index, val) {
-            categories[index].value = parseFloat(val) || 0;
-            // We only re-render if it's a percent to update the ghost text
-            if(categories[index].type === 'percent') {
-                renderCategories();
+        // UPDATED: This function updates data without rebuilding the whole list!
+        function updateData(index, field, val) {
+            categories[index][field] = field === 'value' ? parseFloat(val) || 0 : val;
+            
+            // Just update the preview text and chart, don't re-render the whole HTML
+            if (field === 'value') {
+                const totalIncome = (parseFloat(document.getElementById('income1').value) || 0) + 
+                                    (parseFloat(document.getElementById('income2').value) || 0);
+                const previewEl = document.getElementById(`preview-${index}`);
+                if (categories[index].type === 'percent') {
+                    const newVal = totalIncome * (categories[index].value / 100);
+                    previewEl.innerText = '=$' + newVal.toFixed(2);
+                }
             }
-            saveAndCalc();
+            saveAndCalc(false); // Passing false so it doesn't trigger a full render
         }
 
         function toggleType(index) {
             categories[index].type = categories[index].type === 'fixed' ? 'percent' : 'fixed';
             renderCategories();
-            saveAndCalc();
+            saveAndCalc(true);
         }
 
         function togglePaid(index) {
             categories[index].paid = !categories[index].paid;
             renderCategories();
-            saveAndCalc();
+            saveAndCalc(true);
         }
 
         function addCategory() {
@@ -305,7 +284,7 @@
         function removeCategory(index) {
             categories.splice(index, 1);
             renderCategories();
-            saveAndCalc();
+            saveAndCalc(true);
         }
 
         function saveData() {
@@ -314,16 +293,21 @@
             localStorage.setItem('categories', JSON.stringify(categories));
         }
 
-        function saveAndCalc() {
+        function saveAndCalc(shouldRender = true) {
             saveData();
             calculateBudget();
+            if(shouldRender) {
+                // Only re-calculate total income display if we aren't mid-typing in an allocation
+                const totalIncome = (parseFloat(document.getElementById('income1').value) || 0) + 
+                                    (parseFloat(document.getElementById('income2').value) || 0);
+                document.getElementById('totalIncome').innerText = totalIncome.toLocaleString();
+            }
         }
 
         function calculateBudget() {
             const inc1 = parseFloat(document.getElementById('income1').value) || 0;
             const inc2 = parseFloat(document.getElementById('income2').value) || 0;
             const totalIncome = inc1 + inc2;
-            document.getElementById('totalIncome').innerText = totalIncome.toLocaleString();
 
             let totalExpenses = 0;
             let chartLabels = [];
@@ -374,10 +358,8 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: { duration: 500 },
-                    plugins: { 
-                        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } 
-                    }
+                    animation: { duration: 0 }, // Set to 0 so chart doesn't "jump" while typing
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
                 }
             });
         }
